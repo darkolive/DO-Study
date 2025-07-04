@@ -6,5 +6,18 @@
       "path": "/graphql",
       "auth": "bearer-token"
     }
+  },
+  "connections": {
+    "resend": {
+      "type": "http",
+      "baseUrl": "https://api.resend.com/",
+      "headers": {
+        "Authorization": "Bearer {{API}}"
+      }
+    },
+    "dgraph": {
+      "type": "dgraph",
+      "connString": "dgraph://do-study-do-study.hypermode.host:443?sslmode=verify-ca&bearertoken={{API_KEY}}"
+    }
   }
 }
