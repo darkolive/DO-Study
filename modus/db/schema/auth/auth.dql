@@ -1,0 +1,37 @@
+# Authentication Schema - DQL Format
+# Types for OTP verification and user authentication
+
+# ChannelOTP - Universal OTP verification for any channel (email, SMS, WhatsApp, etc.)
+type ChannelOTP {
+    channelHash: string @index(exact) .     # Hashed version of email/phone/etc for privacy
+    channelType: string @index(exact) .     # "email", "sms", "whatsapp", "telegram"
+    otpHash: string .                       # Hashed OTP code for security
+    verified: bool @index(bool) .           # Whether this OTP has been verified
+    expiresAt: datetime @index(hour) .      # When the OTP expires
+    createdAt: datetime @index(hour) .      # When the OTP was created
+    userId: string @index(exact) .          # Optional: link to user if known
+    purpose: string @index(exact) .         # "signin", "signup", "password_reset", etc.
+    used: bool @index(bool) .               # Whether OTP has been consumed
+}
+
+# User - Basic user information
+type User {
+    email: string @index(exact) .           # User's email address
+    emailVerified: bool @index(bool) .      # Whether email is verified
+    phone: string @index(exact) .           # User's phone number
+    phoneVerified: bool @index(bool) .      # Whether phone is verified
+    createdAt: datetime @index(hour) .      # Account creation time
+    lastLoginAt: datetime @index(hour) .    # Last successful login
+    status: string @index(exact) .          # "active", "suspended", "pending"
+}
+
+# AuthSession - User authentication sessions
+type AuthSession {
+    userId: string @index(exact) .          # Reference to User
+    token: string @index(exact) .           # Session token (hashed)
+    expiresAt: datetime @index(hour) .      # Session expiration
+    createdAt: datetime @index(hour) .      # Session creation time
+    ipAddress: string .                     # IP address for security
+    userAgent: string .                     # Browser/device info
+    active: bool @index(bool) .             # Whether session is active
+}

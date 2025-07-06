@@ -8,11 +8,12 @@
     }
   },
   "connections": {
-    "resend": {
+    "mailersend": {
       "type": "http",
-      "baseUrl": "https://api.resend.com/",
+      "baseUrl": "https://api.mailersend.com/v1/email/",
       "headers": {
-        "Authorization": "Bearer {{API}}"
+        "Authorization": "Bearer {{API_KEY}}",
+        "Content-Type": "application/json"
       }
     },
     "dgraph": {
