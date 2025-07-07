@@ -1,37 +1,65 @@
 # Authentication Schema - DQL Format
-# Types for OTP verification and user authentication
+# Predicates for OTP verification and user authentication
 
-# ChannelOTP - Universal OTP verification for any channel (email, SMS, WhatsApp, etc.)
+# ChannelOTP predicates
+channelHash: string @index(exact) .
+channelType: string @index(exact) .
+otpHash: string .
+verified: bool @index(bool) .
+expiresAt: datetime @index(hour) .
+createdAt: datetime @index(hour) .
+userId: string @index(exact) .
+purpose: string @index(exact) .
+used: bool @index(bool) .
+
+# User predicates
+email: string @index(exact) .
+emailVerified: bool @index(bool) .
+phone: string @index(exact) .
+phoneVerified: bool @index(bool) .
+lastLoginAt: datetime @index(hour) .
+status: string @index(exact) .
+# Channel DIDs for unique identification per source
+emailDID: string @index(exact) .        # Unique DID for email channel
+phoneDID: string @index(exact) .        # Unique DID for phone channel
+
+# AuthSession predicates
+token: string @index(exact) .
+ipAddress: string .
+userAgent: string .
+active: bool @index(bool) .
+
+# Types
 type ChannelOTP {
-    channelHash: string @index(exact) .     # Hashed version of email/phone/etc for privacy
-    channelType: string @index(exact) .     # "email", "sms", "whatsapp", "telegram"
-    otpHash: string .                       # Hashed OTP code for security
-    verified: bool @index(bool) .           # Whether this OTP has been verified
-    expiresAt: datetime @index(hour) .      # When the OTP expires
-    createdAt: datetime @index(hour) .      # When the OTP was created
-    userId: string @index(exact) .          # Optional: link to user if known
-    purpose: string @index(exact) .         # "signin", "signup", "password_reset", etc.
-    used: bool @index(bool) .               # Whether OTP has been consumed
+    channelHash
+    channelType
+    otpHash
+    verified
+    expiresAt
+    createdAt
+    userId
+    purpose
+    used
 }
 
-# User - Basic user information
 type User {
-    email: string @index(exact) .           # User's email address
-    emailVerified: bool @index(bool) .      # Whether email is verified
-    phone: string @index(exact) .           # User's phone number
-    phoneVerified: bool @index(bool) .      # Whether phone is verified
-    createdAt: datetime @index(hour) .      # Account creation time
-    lastLoginAt: datetime @index(hour) .    # Last successful login
-    status: string @index(exact) .          # "active", "suspended", "pending"
+    email
+    emailVerified
+    phone
+    phoneVerified
+    createdAt
+    lastLoginAt
+    status
+    emailDID
+    phoneDID
 }
 
-# AuthSession - User authentication sessions
 type AuthSession {
-    userId: string @index(exact) .          # Reference to User
-    token: string @index(exact) .           # Session token (hashed)
-    expiresAt: datetime @index(hour) .      # Session expiration
-    createdAt: datetime @index(hour) .      # Session creation time
-    ipAddress: string .                     # IP address for security
-    userAgent: string .                     # Browser/device info
-    active: bool @index(bool) .             # Whether session is active
+    userId
+    token
+    expiresAt
+    createdAt
+    ipAddress
+    userAgent
+    active
 }

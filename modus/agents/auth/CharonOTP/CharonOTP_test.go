@@ -1,4 +1,4 @@
-package CharonOTP
+package charonotp
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func TestSendOTPRequest(t *testing.T) {
 	
 	// Test email channel
 	req := OTPRequest{
-		Channel:   ChannelEmail,
+		Channel:   "email",
 		Recipient: "darren@darkolive.co.uk",
 		UserID:    "user123",
 	}
@@ -51,10 +51,10 @@ func TestSendOTPRequest(t *testing.T) {
 }
 
 func TestOTPChannels(t *testing.T) {
-	channels := []OTPChannel{ChannelEmail, ChannelSMS, ChannelWhatsApp, ChannelTelegram}
+	channels := []string{"email", "sms", "whatsapp", "telegram"}
 	
 	for _, channel := range channels {
-		t.Run(string(channel), func(t *testing.T) {
+		t.Run(channel, func(t *testing.T) {
 			req := OTPRequest{
 				Channel:   channel,
 				Recipient: "darren@darkolive.co.uk",

@@ -1,4 +1,4 @@
-package CharonOTP
+package charonotp
 
 import (
 	"context"
@@ -10,24 +10,15 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
 	hermesmailer "modus/agents/communication/HermesMailer"
-)
-
-// OTPChannel represents the delivery channel for OTP
-type OTPChannel string
-
-const (
-	ChannelEmail     OTPChannel = "email"
-	ChannelSMS       OTPChannel = "sms"
-	ChannelWhatsApp  OTPChannel = "whatsapp"
-	ChannelTelegram  OTPChannel = "telegram"
 )
 
 // OTPRequest represents the request to generate and send OTP
 type OTPRequest struct {
-	Channel     OTPChannel `json:"channel"`
-	Recipient   string     `json:"recipient"`   // email, phone number, etc.
-	UserID      string     `json:"userId,omitempty"`
+	Channel     string `json:"channel"`     // "email", "sms", "whatsapp", "telegram"
+	Recipient   string `json:"recipient"`   // email, phone number, etc.
+	UserID      string `json:"userId,omitempty"`
 }
 
 // OTPResponse represents the response after OTP generation
@@ -35,14 +26,13 @@ type OTPResponse struct {
 	OTPID     string    `json:"otpId"`
 	Sent      bool      `json:"sent"`
 	Verified  bool      `json:"verified"`
-	Channel   OTPChannel `json:"channel"`
+	Channel   string `json:"channel"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	Message   string    `json:"message,omitempty"`
 }
 
 // VerifyOTPRequest represents the request to verify an OTP
 type VerifyOTPRequest struct {
-	OTPID     string `json:"otpId"`
 	OTPCode   string `json:"otpCode"`
 	Recipient string `json:"recipient"`
 }
@@ -52,6 +42,8 @@ type VerifyOTPResponse struct {
 	Verified  bool   `json:"verified"`
 	Message   string `json:"message"`
 	UserID    string `json:"userId,omitempty"`
+	Action    string `json:"action,omitempty"` // "signin" or "register"
+	ChannelDID string `json:"channelDID,omitempty"` // Unique identifier for the channel
 }
 
 // ChannelOTPRecord represents the OTP stored in Dgraph (matches ChannelOTP schema)
@@ -87,10 +79,7 @@ func hashString(input string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// verifyHash compares a plain text value with its hash
-func verifyHash(plaintext, hash string) bool {
-	return hashString(plaintext) == hash
-}
+
 
 // storeOTPInDgraph stores the OTP record in Dgraph using DQL mutation
 func storeOTPInDgraph(_ context.Context, otpCode, channel, recipient, userID, purpose string, expiresAt time.Time) (string, error) {
@@ -100,51 +89,38 @@ func storeOTPInDgraph(_ context.Context, otpCode, channel, recipient, userID, pu
 	channelHash := hashString(recipient)
 	otpHash := hashString(otpCode)
 	
-	// Build DQL mutation using ChannelOTP schema
-	// TODO: This mutation will be used when proper Query function is available
-	_ = fmt.Sprintf(`
-		mutation {
-			set {
-				_:channelotp <channelHash> "%s" .
-				_:channelotp <channelType> "%s" .
-				_:channelotp <otpHash> "%s" .
-				_:channelotp <verified> "false" .
-				_:channelotp <expiresAt> "%s" .
-				_:channelotp <createdAt> "%s" .
-				_:channelotp <userId> "%s" .
-				_:channelotp <purpose> "%s" .
-				_:channelotp <used> "false" .
-				_:channelotp <dgraph.type> "ChannelOTP" .
-			}
-		}`,
+	// Build N-Quads for ChannelOTP (pure N-Quads format, no mutation wrapper)
+	nquads := fmt.Sprintf(`_:channelotp <channelHash> "%s" .
+_:channelotp <channelType> "%s" .
+_:channelotp <otpHash> "%s" .
+_:channelotp <verified> "false"^^<xs:boolean> .
+_:channelotp <expiresAt> "%s"^^<xs:dateTime> .
+_:channelotp <createdAt> "%s"^^<xs:dateTime> .
+_:channelotp <userId> "%s" .
+_:channelotp <purpose> "%s" .
+_:channelotp <used> "false"^^<xs:boolean> .
+_:channelotp <dgraph.type> "ChannelOTP" .`,
 		channelHash, channel, otpHash,
 		expiresAt.Format(time.RFC3339),
 		createdAt.Format(time.RFC3339),
 		userID, purpose,
 	)
 	
-	// TODO: Use proper Modus Query function - this will be available at runtime
-	// For now, using placeholder to complete the structure
-	result := `{"data":{"uids":{"otp":"0x123"}}}`
-	// Placeholder - will be replaced with actual Query call
-	// var err error = nil
+	// Create Dgraph mutation with proper N-Quads format
+	mutationObj := dgraph.NewMutation().WithSetNquads(nquads)
 	
-	// Parse DQL response to get UID
-	var response struct {
-		Data struct {
-			UIDs map[string]string `json:"uids"`
-		} `json:"data"`
+	// Execute DQL mutation using Dgraph SDK
+	result, err := dgraph.ExecuteMutations("dgraph", mutationObj)
+	if err != nil {
+		return "", fmt.Errorf("failed to store OTP in Dgraph: %w", err)
 	}
 	
-	if err := json.Unmarshal([]byte(result), &response); err != nil {
-		return "", fmt.Errorf("failed to parse Dgraph response: %w", err)
-	}
-	
-	otpUID, exists := response.Data.UIDs["otp"]
+	// Get UID directly from response.Uids map
+	otpUID, exists := result.Uids["channelotp"]
 	if !exists {
-		return "", fmt.Errorf("failed to get OTP UID from response")
+		return "", fmt.Errorf("failed to get OTP UID from Dgraph response")
 	}
-	
+
 	return otpUID, nil
 }
 
@@ -173,7 +149,7 @@ func sendOTPViaEmail(ctx context.Context, recipient, otpCode, purpose string) er
 }
 
 // sendOTPViaOtherChannels sends OTP via SMS, WhatsApp, or Telegram using IrisMessage
-func sendOTPViaOtherChannels(_ context.Context, channel OTPChannel, _ string, _ string, _ string) error {
+func sendOTPViaOtherChannels(_ context.Context, channel string, _ string, _ string, _ string) error {
 	// TODO: Implement IrisMessage integration for SMS, WhatsApp, Telegram
 	// This is a placeholder until IrisMessage agent is implemented
 	
@@ -181,13 +157,13 @@ func sendOTPViaOtherChannels(_ context.Context, channel OTPChannel, _ string, _ 
 	// message := fmt.Sprintf("Your OTP code for %s is: %s. This code expires in 5 minutes.", purpose, otpCode)
 	
 	switch channel {
-	case ChannelSMS:
+	case "sms":
 		// TODO: Call IrisMessage SMS function
 		return fmt.Errorf("SMS channel not yet implemented - waiting for IrisMessage agent")
-	case ChannelWhatsApp:
+	case "whatsapp":
 		// TODO: Call IrisMessage WhatsApp function
 		return fmt.Errorf("whatsApp channel not yet implemented - waiting for IrisMessage agent")
-	case ChannelTelegram:
+	case "telegram":
 		// TODO: Call IrisMessage Telegram function
 		return fmt.Errorf("telegram channel not yet implemented - waiting for IrisMessage agent")
 	default:
@@ -227,9 +203,9 @@ func SendOTP(ctx context.Context, req OTPRequest) (OTPResponse, error) {
 	// Send OTP via selected channel
 	var sendErr error
 	switch req.Channel {
-	case ChannelEmail:
+	case "email":
 		sendErr = sendOTPViaEmail(ctx, req.Recipient, otpCode, purpose)
-	case ChannelSMS, ChannelWhatsApp, ChannelTelegram:
+	case "sms", "whatsapp", "telegram":
 		sendErr = sendOTPViaOtherChannels(ctx, req.Channel, req.Recipient, otpCode, purpose)
 	default:
 		sendErr = fmt.Errorf("unsupported channel: %s", req.Channel)
@@ -252,45 +228,71 @@ func SendOTP(ctx context.Context, req OTPRequest) (OTPResponse, error) {
 	return response, nil
 }
 
+
+
 // VerifyOTP verifies an OTP code against the database
-func VerifyOTP(ctx context.Context, req VerifyOTPRequest) (VerifyOTPResponse, error) {
-	// Validate request
-	if req.OTPID == "" {
-		return VerifyOTPResponse{}, fmt.Errorf("otpId is required")
-	}
-	if req.OTPCode == "" {
-		return VerifyOTPResponse{}, fmt.Errorf("otpCode is required")
-	}
-	if req.Recipient == "" {
-		return VerifyOTPResponse{}, fmt.Errorf("recipient is required")
-	}
+// Frontend should store channel value and pass it with the OTP code
+func VerifyOTP(req VerifyOTPRequest) (VerifyOTPResponse, error) {
+	ctx := context.Background()
 	
-	// Query OTP from Dgraph
-	otpRecord, err := getOTPFromDgraph(ctx, req.OTPID)
+	// Hash the provided channel and OTP for database comparison
+	channelHash := hashString(req.Recipient)
+	otpHash := hashString(req.OTPCode)
+	
+	// Query Dgraph to find matching OTP record
+	query := fmt.Sprintf(`{
+		otp_verification(func: eq(channelHash, "%s")) @filter(eq(otpHash, "%s") AND eq(verified, false) AND eq(used, false)) {
+			uid
+			channelHash
+			otpHash
+			verified
+			used
+			expiresAt
+			createdAt
+			userId
+			purpose
+			channelType
+		}
+	}`, channelHash, otpHash)
+	
+	// Execute query using Dgraph SDK
+	queryObj := dgraph.NewQuery(query)
+	result, err := dgraph.ExecuteQuery("dgraph", queryObj)
 	if err != nil {
 		return VerifyOTPResponse{
 			Verified: false,
-			Message:  fmt.Sprintf("Failed to retrieve OTP: %v", err),
-		}, nil
+			Message:  "Failed to verify OTP: database error",
+		}, fmt.Errorf("failed to query OTP: %w", err)
 	}
 	
-	// Check if OTP exists
-	if otpRecord == nil {
+	// Parse query response
+	var response struct {
+		OTPVerification []struct {
+			UID         string    `json:"uid"`
+			ExpiresAt   time.Time `json:"expiresAt"`
+			UserID      string    `json:"userId"`
+			ChannelType string    `json:"channelType"`
+		} `json:"otp_verification"`
+	}
+	
+	if err := json.Unmarshal([]byte(result.Json), &response); err != nil {
 		return VerifyOTPResponse{
 			Verified: false,
-			Message:  "OTP not found or invalid",
-		}, nil
+			Message:  "Failed to parse verification response",
+		}, fmt.Errorf("failed to parse query response: %w", err)
 	}
 	
-	// Check if OTP is already used
-	if otpRecord.Used {
+	// Check if OTP was found
+	if len(response.OTPVerification) == 0 {
 		return VerifyOTPResponse{
 			Verified: false,
-			Message:  "OTP has already been used",
+			Message:  "Invalid OTP code or OTP has already been used",
 		}, nil
 	}
 	
-	// Check if OTP is expired
+	otpRecord := response.OTPVerification[0]
+	
+	// Check if OTP has expired
 	if time.Now().After(otpRecord.ExpiresAt) {
 		return VerifyOTPResponse{
 			Verified: false,
@@ -298,58 +300,137 @@ func VerifyOTP(ctx context.Context, req VerifyOTPRequest) (VerifyOTPResponse, er
 		}, nil
 	}
 	
-	// Check if recipient matches (compare hashed values)
-	recipientHash := hashString(req.Recipient)
-	if otpRecord.ChannelHash != recipientHash {
+	// Mark OTP as verified and used
+	if err := markOTPAsVerifiedAndUsed(ctx, otpRecord.UID); err != nil {
 		return VerifyOTPResponse{
 			Verified: false,
-			Message:  "Recipient does not match",
-		}, nil
+			Message:  "Failed to update OTP status",
+		}, fmt.Errorf("failed to mark OTP as used: %w", err)
 	}
 	
-	// Check if OTP code matches (compare hashed values)
-	if !verifyHash(req.OTPCode, otpRecord.OTPHash) {
-		return VerifyOTPResponse{
-			Verified: false,
-			Message:  "Invalid OTP code",
-		}, nil
-	}
+	// Determine channel type from the OTP record
+	channelType := otpRecord.ChannelType
 	
-	// Mark OTP as used in database
-	err = markOTPAsUsed(ctx, req.OTPID)
+	// Perform post-OTP verification to check if user exists
+	action, userID, channelDID, err := PostOTPVerification(channelType, req.Recipient)
 	if err != nil {
 		return VerifyOTPResponse{
 			Verified: false,
-			Message:  fmt.Sprintf("Failed to mark OTP as used: %v", err),
-		}, nil
+			Message:  "Failed to determine next action",
+		}, fmt.Errorf("post-OTP verification failed: %w", err)
 	}
 	
-	// OTP verification successful
+	// Return successful verification with routing information
 	return VerifyOTPResponse{
-		Verified: true,
-		Message:  "OTP verified successfully",
-		UserID:   otpRecord.UserID,
+		Verified:   true,
+		Message:    "OTP verified successfully",
+		UserID:     userID,
+		Action:     action,     // "signin" or "register"
+		ChannelDID: channelDID, // Unique identifier for the channel
 	}, nil
 }
 
-// getOTPFromDgraph retrieves an OTP record from Dgraph by ID
-func getOTPFromDgraph(ctx context.Context, otpID string) (*ChannelOTPRecord, error) {
-	// TODO: Implement Dgraph query to get OTP by ID
-	// For now, return a placeholder implementation
-	// This would typically use a GraphQL query like:
-	// query { getOTP(id: "$otpID") { uid otp.code otp.recipient otp.used otp.expiresAt } }
-	
-	// Placeholder - in real implementation, query Dgraph
-	return nil, fmt.Errorf("getOTPFromDgraph not yet implemented")
+// markOTPAsVerifiedAndUsed marks an OTP as both verified and used in Dgraph
+func markOTPAsVerifiedAndUsed(_ context.Context, otpUID string) error {
+	// Create DQL mutation to mark OTP as verified and used
+	nquads := fmt.Sprintf(`
+		<%s> <verified> "true"^^<xs:boolean> .
+		<%s> <used> "true"^^<xs:boolean> .
+	`, otpUID, otpUID)
+
+	// Use the latest v25-compatible ExecuteMutations method
+	mutationObj := dgraph.NewMutation().WithSetNquads(nquads)
+	_, err := dgraph.ExecuteMutations("dgraph", mutationObj)
+	if err != nil {
+		return fmt.Errorf("failed to mark OTP as verified and used: %v", err)
+	}
+
+	fmt.Printf("✅ OTP %s marked as verified and used\n", otpUID)
+	return nil
 }
 
-// markOTPAsUsed marks an OTP as used in Dgraph
-func markOTPAsUsed(ctx context.Context, otpID string) error {
-	// TODO: Implement Dgraph mutation to mark OTP as used
-	// For now, return a placeholder implementation
-	// This would typically use a GraphQL mutation like:
-	// mutation { updateOTP(input: {filter: {id: ["$otpID"]}, set: {otp.used: true}}) }
-	
-	// Placeholder - in real implementation, update Dgraph
-	return fmt.Errorf("markOTPAsUsed not yet implemented")
+// generateChannelDID creates a unique DID for a channel (email/phone)
+func generateChannelDID(channel, recipient string) string {
+	// Create a unique identifier based on channel type and recipient
+	// This ensures each email/phone has a unique DID across the system
+	return hashString(fmt.Sprintf("%s:%s", channel, recipient))
+}
+
+// checkUserExists checks if a user exists by channel DID
+func checkUserExists(channelDID, channelType string) (bool, string, error) {
+	// Create GraphQL query to check if user exists by channel DID
+	var query string
+	if channelType == "email" {
+		query = fmt.Sprintf(`
+			query {
+				queryUser(filter: { emailDID: { eq: "%s" } }) {
+					uid
+					email
+					emailDID
+					status
+				}
+			}
+		`, channelDID)
+	} else if channelType == "phone" {
+		query = fmt.Sprintf(`
+			query {
+				queryUser(filter: { phoneDID: { eq: "%s" } }) {
+					uid
+					phone
+					phoneDID
+					status
+				}
+			}
+		`, channelDID)
+	} else {
+		return false, "", fmt.Errorf("unsupported channel type: %s", channelType)
+	}
+
+	// Use the latest v25-compatible ExecuteQuery method
+	resp, err := dgraph.ExecuteQuery("dgraph", dgraph.NewQuery(query))
+	if err != nil {
+		return false, "", fmt.Errorf("failed to query user: %v", err)
+	}
+
+	// Parse the response
+	var result struct {
+		QueryUser []struct {
+			UID    string `json:"uid"`
+			Email  string `json:"email,omitempty"`
+			Phone  string `json:"phone,omitempty"`
+			Status string `json:"status"`
+		} `json:"queryUser"`
+	}
+
+	if err := json.Unmarshal([]byte(resp.Json), &result); err != nil {
+		return false, "", fmt.Errorf("failed to parse user query response: %v", err)
+	}
+
+	// Check if user exists
+	if len(result.QueryUser) > 0 {
+		return true, result.QueryUser[0].UID, nil
+	}
+
+	return false, "", nil
+}
+
+// PostOTPVerification handles the logic after OTP is successfully verified
+// Checks if user exists and returns appropriate action (signin/register)
+func PostOTPVerification(channel, recipient string) (string, string, string, error) {
+	// Generate channel DID for unique identification
+	channelDID := generateChannelDID(channel, recipient)
+
+	// Check if user exists by channel DID
+	userExists, userID, err := checkUserExists(channelDID, channel)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to check user existence: %v", err)
+	}
+
+	if userExists {
+		// User exists - route to signin
+		return "signin", userID, channelDID, nil
+	} else {
+		// User doesn't exist - route to register
+		return "register", "", channelDID, nil
+	}
 }
