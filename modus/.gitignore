@@ -14,3 +14,9 @@ __debug_bin*
 *.generated.go
 
 .modusdb/
+
+# Ignore build artifacts and binaries
+modus-build
+delete_auth_data
+*.exe
+*.bin
