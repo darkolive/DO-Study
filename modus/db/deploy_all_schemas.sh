@@ -1,45 +1,69 @@
 #!/bin/bash
 
-# Master Schema Deployment Script
-# Deploys all schemas in organized categories
+# Deploy Combined Schema to Hypermode Dgraph
+# Uses the working combined.dql schema file with correct DQL syntax
 
-echo "🚀 Deploying All Schemas to Hypermode Dgraph..."
-echo "================================================"
+echo "🚀 Deploying Combined Schema to Hypermode Dgraph..."
+echo "=================================================="
+echo "📄 Using auto-generated schema.dql with correct DQL syntax"
+echo ""
 
-# Base directory for schemas
-SCHEMA_DIR="$(dirname "$0")/schema"
+# Check if API_KEY environment variable is set
+if [ -z "$API_KEY" ]; then
+    echo "⚠️  API_KEY environment variable not set, using default from .env.dev.local"
+    API_KEY="nZgKQjXX2XBRpt"
+fi
 
-# Categories to deploy
-CATEGORIES=("auth" "users" "courses" "centres" "assessments")
+# Path to the auto-generated schema file
+SCHEMA_FILE="$(dirname "$0")/schema/schema.dql"
 
-# Deploy each category
-for category in "${CATEGORIES[@]}"; do
-    echo ""
-    echo "📂 Deploying $category schema..."
-    
-    if [ -d "$SCHEMA_DIR/$category" ]; then
-        cd "$SCHEMA_DIR/$category"
-        
-        if [ -f "deploy.sh" ]; then
-            echo "   ✅ Found deploy.sh for $category"
-            chmod +x deploy.sh
-            ./deploy.sh
-        else
-            echo "   ⚠️  No deploy.sh found for $category"
-        fi
-        
-        cd - > /dev/null
-    else
-        echo "   ❌ Directory $SCHEMA_DIR/$category not found"
+# Check if schema file exists
+if [ ! -f "$SCHEMA_FILE" ]; then
+    echo "❌ Error: Schema file not found at $SCHEMA_FILE"
+    echo "💡 Run ./combine_schema.sh to generate the schema.dql file"
+    exit 1
+fi
+
+# Check if file is empty
+if [ ! -s "$SCHEMA_FILE" ]; then
+    echo "❌ Error: Schema file is empty"
+    echo "💡 Run ./combine_schema.sh to generate the schema.dql file"
+    exit 1
+fi
+
+echo "📄 Deploying auto-generated schema..."
+echo "   📁 File: $SCHEMA_FILE"
+echo "   📊 Size: $(wc -l < "$SCHEMA_FILE") lines"
+echo ""
+
+# Deploy the combined schema
+response=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $API_KEY" \
+    --data-binary "@$SCHEMA_FILE" \
+    "https://do-study-do-study.hypermode.host/dgraph/alter")
+
+# Extract HTTP status code (last line)
+http_code=$(echo "$response" | tail -n1)
+# Extract response body (all lines except last)
+response_body=$(echo "$response" | sed '$d')
+
+if [ "$http_code" = "200" ]; then
+    echo "✅ Auto-generated schema deployed successfully!"
+    if [ -n "$response_body" ] && [ "$response_body" != "{}" ]; then
+        echo "📋 Response: $response_body"
     fi
-done
-
-echo ""
-echo "🎉 All schema deployments completed!"
-echo ""
-echo "📋 Summary:"
-echo "   - Auth: ChannelOTP, User, AuthSession"
-echo "   - Users: (to be added)"
-echo "   - Courses: (to be added)"
-echo "   - Centres: (to be added)"
-echo "   - Assessments: (to be added)"
+    echo ""
+    echo "🎉 Schema deployment completed!"
+    echo "================================================"
+    echo "📊 Summary:"
+    echo "   ✅ Auto-generated schema deployed with correct DQL syntax"
+    echo "   🔧 Includes all predicates and type definitions"
+    echo "   📈 Ready for use by authentication agents"
+    echo ""
+    echo "💡 Tip: Use ./check_schema.sh to verify the deployed schema"
+else
+    echo "❌ Auto-generated schema deployment failed (HTTP $http_code)"
+    echo "📋 Response: $response_body"
+    exit 1
+fi

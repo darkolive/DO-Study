@@ -360,7 +360,8 @@ func generateChannelDID(channel, recipient string) string {
 func checkUserExists(channelDID, channelType string) (bool, string, error) {
 	// Create GraphQL query to check if user exists by channel DID
 	var query string
-	if channelType == "email" {
+	switch channelType {
+	case "email":
 		query = fmt.Sprintf(`
 			query {
 				queryUser(filter: { emailDID: { eq: "%s" } }) {
@@ -371,7 +372,7 @@ func checkUserExists(channelDID, channelType string) (bool, string, error) {
 				}
 			}
 		`, channelDID)
-	} else if channelType == "phone" {
+	case "phone":
 		query = fmt.Sprintf(`
 			query {
 				queryUser(filter: { phoneDID: { eq: "%s" } }) {
@@ -382,7 +383,7 @@ func checkUserExists(channelDID, channelType string) (bool, string, error) {
 				}
 			}
 		`, channelDID)
-	} else {
+	default:
 		return false, "", fmt.Errorf("unsupported channel type: %s", channelType)
 	}
 
