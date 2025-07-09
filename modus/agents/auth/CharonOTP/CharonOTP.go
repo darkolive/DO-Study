@@ -358,31 +358,27 @@ func generateChannelDID(channel, recipient string) string {
 
 // checkUserExists checks if a user exists by channel DID
 func checkUserExists(channelDID, channelType string) (bool, string, error) {
-	// Create GraphQL query to check if user exists by channel DID
+	// Create DQL query to check if user exists by channel DID
 	var query string
 	switch channelType {
 	case "email":
-		query = fmt.Sprintf(`
-			query {
-				queryUser(filter: { emailDID: { eq: "%s" } }) {
-					uid
-					email
-					emailDID
-					status
-				}
+		query = fmt.Sprintf(`{
+			user(func: eq(emailDID, "%s")) {
+				uid
+				email
+				emailDID
+				status
 			}
-		`, channelDID)
+		}`, channelDID)
 	case "phone":
-		query = fmt.Sprintf(`
-			query {
-				queryUser(filter: { phoneDID: { eq: "%s" } }) {
-					uid
-					phone
-					phoneDID
-					status
-				}
+		query = fmt.Sprintf(`{
+			user(func: eq(phoneDID, "%s")) {
+				uid
+				phone
+				phoneDID
+				status
 			}
-		`, channelDID)
+		}`, channelDID)
 	default:
 		return false, "", fmt.Errorf("unsupported channel type: %s", channelType)
 	}
@@ -395,12 +391,12 @@ func checkUserExists(channelDID, channelType string) (bool, string, error) {
 
 	// Parse the response
 	var result struct {
-		QueryUser []struct {
+		User []struct {
 			UID    string `json:"uid"`
 			Email  string `json:"email,omitempty"`
 			Phone  string `json:"phone,omitempty"`
 			Status string `json:"status"`
-		} `json:"queryUser"`
+		} `json:"user"`
 	}
 
 	if err := json.Unmarshal([]byte(resp.Json), &result); err != nil {
@@ -408,8 +404,8 @@ func checkUserExists(channelDID, channelType string) (bool, string, error) {
 	}
 
 	// Check if user exists
-	if len(result.QueryUser) > 0 {
-		return true, result.QueryUser[0].UID, nil
+	if len(result.User) > 0 {
+		return true, result.User[0].UID, nil
 	}
 
 	return false, "", nil
