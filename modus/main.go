@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"time"
 
 	charonotp "modus/agents/auth/CharonOTP"
@@ -154,24 +155,7 @@ type WebAuthnAssertionChallengeResponse struct {
 	UserVerification string                    `json:"userVerification"`
 }
 
-// Convert main package types to charonotp package types
-func convertToCharonOTPRequest(req OTPRequest) charonotp.OTPRequest {
-	return charonotp.OTPRequest{
-		Channel:   req.Channel, // Now using string instead of enum
-		Recipient: req.Recipient,
-		UserID:    "", // Empty userID since not required for this agent
-	}
-}
 
-func convertFromCharonOTPResponse(resp charonotp.OTPResponse) OTPResponse {
-	return OTPResponse{
-		OTPID:     resp.OTPID,
-		Sent:      resp.Sent,
-		Channel:   string(resp.Channel),
-		ExpiresAt: resp.ExpiresAt,
-		Message:   resp.Message,
-	}
-}
 
 // Convert main package verify types to charonotp package types
 func convertToCharonVerifyRequest(req VerifyOTPRequest) charonotp.VerifyOTPRequest {
@@ -191,21 +175,28 @@ func convertFromCharonVerifyResponse(resp charonotp.VerifyOTPResponse) VerifyOTP
 	}
 }
 
-// SendOTP is the exported wrapper function for Modus
+// SendOTP is the exported wrapper function for Modus GraphQL
 func SendOTP(req OTPRequest) (OTPResponse, error) {
-	// Temporary simplified version for testing GraphQL discovery
-	return OTPResponse{
-		OTPID:     "test-otp-id",
-		Sent:      true,
+	// Convert to charonotp types
+	charonReq := charonotp.OTPRequest{
 		Channel:   req.Channel,
-		ExpiresAt: time.Now().Add(5 * time.Minute),
-		Message:   "Test OTP function discovered by GraphQL",
+		Recipient: req.Recipient,
+	}
+	
+	// Call the charonotp agent to send OTP
+	resp, err := charonotp.SendOTP(context.Background(), charonReq)
+	if err != nil {
+		return OTPResponse{}, err
+	}
+	
+	// Convert response back to main types
+	return OTPResponse{
+		OTPID:     resp.OTPID,
+		Sent:      resp.Sent,
+		Channel:   resp.Channel,
+		ExpiresAt: resp.ExpiresAt,
+		Message:   resp.Message,
 	}, nil
-}
-
-// TestSimpleFunction is a basic test function to check GraphQL discovery
-func TestSimpleFunction(input string) (string, error) {
-	return "Hello from test function: " + input, nil
 }
 
 // VerifyOTP is the exported wrapper function for Modus
@@ -466,4 +457,9 @@ func convertPublicKeyCredDescriptors(descs []webauthn.PublicKeyCredDescriptor) [
 func main() {
 	// This function is required by Modus but can be empty
 	// All functionality is exposed through exported functions
+}
+
+// TestSimpleFunction is a basic test function to check GraphQL discovery
+func TestSimpleFunction(input string) (string, error) {
+	return "Hello from test function: " + input, nil
 }

@@ -38,12 +38,12 @@ func (w *WebAuthnService) CreateRegistrationChallenge(ctx context.Context, req C
 	}
 
 	// Store challenge in database with expiry
-	if err := w.storeChallenge(ctx, challenge, req.UserID, "registration"); err != nil {
+	if err := w.storeChallenge(challenge, req.UserID, "registration"); err != nil {
 		return ChallengeResponse{}, fmt.Errorf("failed to store challenge: %v", err)
 	}
 
 	// Get existing credentials to exclude
-	excludeCredentials, err := w.getUserCredentials(ctx, req.UserID)
+	excludeCredentials, err := w.getUserCredentials(req.UserID)
 	if err != nil {
 		log.Printf("⚠️ Warning: Could not fetch existing credentials: %v", err)
 		excludeCredentials = []PublicKeyCredDescriptor{}
@@ -83,7 +83,7 @@ func (w *WebAuthnService) VerifyRegistration(ctx context.Context, req Registrati
 	log.Printf("🔐 WebAuthn: Verifying registration for user %s", req.UserID)
 
 	// Verify challenge
-	if err := w.verifyChallenge(ctx, req.Challenge, req.UserID, "registration"); err != nil {
+	if err := w.verifyChallenge(req.Challenge, req.UserID, "registration"); err != nil {
 		return RegistrationResponse{
 			Success: false,
 			Message: fmt.Sprintf("Challenge verification failed: %v", err),
@@ -126,7 +126,7 @@ func (w *WebAuthnService) VerifyRegistration(ctx context.Context, req Registrati
 		AddedAt:      time.Now(),
 	}
 
-	if err := w.storeCredential(ctx, credential); err != nil {
+	if err := w.storeCredential(credential); err != nil {
 		return RegistrationResponse{
 			Success: false,
 			Message: fmt.Sprintf("Failed to store credential: %v", err),
@@ -134,7 +134,7 @@ func (w *WebAuthnService) VerifyRegistration(ctx context.Context, req Registrati
 	}
 
 	// Clean up challenge
-	w.deleteChallenge(ctx, req.Challenge)
+	w.deleteChallenge(req.Challenge)
 
 	log.Printf("✅ WebAuthn: Registration successful for user %s", req.UserID)
 	return RegistrationResponse{
@@ -146,7 +146,7 @@ func (w *WebAuthnService) VerifyRegistration(ctx context.Context, req Registrati
 }
 
 // CreateAuthenticationChallenge generates a WebAuthn authentication challenge
-func (w *WebAuthnService) CreateAuthenticationChallenge(ctx context.Context, req AssertionChallengeRequest) (AssertionChallengeResponse, error) {
+func (w *WebAuthnService) CreateAuthenticationChallenge(req AssertionChallengeRequest) (AssertionChallengeResponse, error) {
 	log.Printf("🔐 WebAuthn: Creating authentication challenge for user %s", req.UserID)
 
 	// Generate challenge
@@ -156,12 +156,12 @@ func (w *WebAuthnService) CreateAuthenticationChallenge(ctx context.Context, req
 	}
 
 	// Store challenge
-	if err := w.storeChallenge(ctx, challenge, req.UserID, "authentication"); err != nil {
+	if err := w.storeChallenge(challenge, req.UserID, "authentication"); err != nil {
 		return AssertionChallengeResponse{}, fmt.Errorf("failed to store challenge: %v", err)
 	}
 
 	// Get user's credentials
-	allowCredentials, err := w.getUserCredentials(ctx, req.UserID)
+	allowCredentials, err := w.getUserCredentials(req.UserID)
 	if err != nil {
 		return AssertionChallengeResponse{}, fmt.Errorf("failed to get user credentials: %v", err)
 	}
@@ -179,11 +179,11 @@ func (w *WebAuthnService) CreateAuthenticationChallenge(ctx context.Context, req
 }
 
 // VerifyAuthentication verifies a WebAuthn authentication response
-func (w *WebAuthnService) VerifyAuthentication(ctx context.Context, req AuthenticationRequest) (AuthenticationResponse, error) {
+func (w *WebAuthnService) VerifyAuthentication(req AuthenticationRequest) (AuthenticationResponse, error) {
 	log.Printf("🔐 WebAuthn: Verifying authentication for user %s", req.UserID)
 
 	// Verify challenge
-	if err := w.verifyChallenge(ctx, req.Challenge, req.UserID, "authentication"); err != nil {
+	if err := w.verifyChallenge(req.Challenge, req.UserID, "authentication"); err != nil {
 		return AuthenticationResponse{
 			Success: false,
 			Message: fmt.Sprintf("Challenge verification failed: %v", err),
@@ -207,27 +207,35 @@ func (w *WebAuthnService) VerifyAuthentication(ctx context.Context, req Authenti
 		}, nil
 	}
 
+	// Extract credential ID from authenticator data (simplified)
+	credentialID := extractCredentialID(req.AuthenticatorData)
+	
 	// Get stored credential (simplified - in production, verify signature)
-	credential, err := w.getCredentialByID(ctx, req.UserID, extractCredentialID(req.AuthenticatorData))
+	credential, err := w.getCredentialByID(credentialID)
 	if err != nil {
 		return AuthenticationResponse{
 			Success: false,
-			Message: fmt.Sprintf("Credential not found: %v", err),
+			Message: fmt.Sprintf("Failed to get credential: %v", err),
 		}, nil
 	}
 
 	// Update sign count (simplified)
 	credential.SignCount++
-	w.updateCredentialSignCount(ctx, credential.CredentialID, credential.SignCount)
+	if err := w.updateCredentialSignCount(credentialID, credential.SignCount); err != nil {
+		return AuthenticationResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to update sign count: %v", err),
+		}, nil
+	}
 
 	// Create authentication session
-	sessionID, err := w.createAuthSession(ctx, req.UserID)
+	sessionID, err := w.createAuthSession(req.UserID)
 	if err != nil {
 		log.Printf("⚠️ Warning: Could not create auth session: %v", err)
 	}
 
 	// Clean up challenge
-	w.deleteChallenge(ctx, req.Challenge)
+	w.deleteChallenge(req.Challenge)
 
 	log.Printf("✅ WebAuthn: Authentication successful for user %s", req.UserID)
 	return AuthenticationResponse{
@@ -250,7 +258,7 @@ func generateChallenge() (string, error) {
 }
 
 // storeChallenge stores a challenge in the database with expiry
-func (w *WebAuthnService) storeChallenge(ctx context.Context, challenge, userID, challengeType string) error {
+func (w *WebAuthnService) storeChallenge(challenge, userID, challengeType string) error {
 	expiresAt := time.Now().Add(ChallengeExpiryMinutes * time.Minute)
 	
 	nquads := fmt.Sprintf(`_:challenge <dgraph.type> "WebAuthnChallenge" .
@@ -269,7 +277,7 @@ _:challenge <createdAt> "%s" .`,
 }
 
 // verifyChallenge verifies a challenge exists and is not expired
-func (w *WebAuthnService) verifyChallenge(ctx context.Context, challenge, userID, challengeType string) error {
+func (w *WebAuthnService) verifyChallenge(challenge, userID, challengeType string) error {
 	query := fmt.Sprintf(`{
 		challenges(func: eq(challenge, "%s")) @filter(eq(userId, "%s") AND eq(type, "%s")) {
 			uid
@@ -311,7 +319,7 @@ func (w *WebAuthnService) verifyChallenge(ctx context.Context, challenge, userID
 }
 
 // storeCredential stores a WebAuthn credential in the database
-func (w *WebAuthnService) storeCredential(ctx context.Context, cred WebAuthnCredential) error {
+func (w *WebAuthnService) storeCredential(cred WebAuthnCredential) error {
 	transportsJSON, _ := json.Marshal(cred.Transports)
 	
 	nquads := fmt.Sprintf(`_:credential <dgraph.type> "WebAuthnCredential" .
@@ -331,9 +339,10 @@ _:credential <addedAt> "%s" .`,
 }
 
 // getUserCredentials gets all credentials for a user
-func (w *WebAuthnService) getUserCredentials(ctx context.Context, userID string) ([]PublicKeyCredDescriptor, error) {
+func (w *WebAuthnService) getUserCredentials(userID string) ([]PublicKeyCredDescriptor, error) {
+	// Query for WebAuthn credentials by user UID reference
 	query := fmt.Sprintf(`{
-		credentials(func: eq(user, "%s")) {
+		credentials(func: type(WebAuthnCredential)) @filter(uid_in(user, <%s>)) {
 			credentialId
 			transports
 		}
@@ -408,24 +417,30 @@ func extractCredentialID(authenticatorData string) string {
 }
 
 // Additional helper functions
-func (w *WebAuthnService) getCredentialByID(ctx context.Context, userID, credentialID string) (*WebAuthnCredential, error) {
+func (w *WebAuthnService) getCredentialByID(credentialID string) (*WebAuthnCredential, error) {
 	// Implementation for getting credential by ID
 	return &WebAuthnCredential{CredentialID: credentialID, SignCount: 0}, nil
 }
 
-func (w *WebAuthnService) updateCredentialSignCount(ctx context.Context, credentialID string, signCount int) error {
+func (w *WebAuthnService) updateCredentialSignCount(credentialID string, signCount int) error {
 	// Implementation for updating sign count
+	// TODO: Implement actual sign count update in database
+	_ = credentialID // Mark as used
+	_ = signCount    // Mark as used
 	return nil
 }
 
-func (w *WebAuthnService) createAuthSession(ctx context.Context, userID string) (string, error) {
+func (w *WebAuthnService) createAuthSession(userID string) (string, error) {
 	// Implementation for creating auth session
-	sessionID := fmt.Sprintf("session_%d", time.Now().Unix())
+	// TODO: Implement actual session creation in database
+	sessionID := fmt.Sprintf("session_%s_%d", userID, time.Now().Unix())
 	return sessionID, nil
 }
 
-func (w *WebAuthnService) deleteChallenge(ctx context.Context, challenge string) error {
+func (w *WebAuthnService) deleteChallenge(challenge string) error {
 	// Implementation for deleting challenge
+	// TODO: Implement actual challenge deletion from database
+	_ = challenge // Mark as used
 	return nil
 }
 

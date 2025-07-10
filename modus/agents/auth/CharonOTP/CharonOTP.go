@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/hypermodeinc/modus/sdk/go/pkg/dgraph"
-	hermesmailer "modus/agents/communication/HermesMailer"
+	"modus/services/email"
 )
 
 // OTPRequest represents the request to generate and send OTP
@@ -124,28 +124,23 @@ _:channelotp <dgraph.type> "ChannelOTP" .`,
 	return otpUID, nil
 }
 
-// sendOTPViaEmail sends OTP via email using HermesMailer
-func sendOTPViaEmail(ctx context.Context, recipient, otpCode, purpose string) error {
-	// API key is handled by modus.json connection automatically
-	mailer := hermesmailer.NewHermesMailer("")
+// sendOTPViaEmail sends OTP via email using the email service
+func sendOTPViaEmail(recipient, otpCode string) error {
+	// Use the email service for sending OTP emails
+	response, err := email.SendOTPEmail(
+		recipient,
+		otpCode,
+	)
 	
-	req := &hermesmailer.SendTemplateRequest{
-		FromName:   "DO Study Platform",
-		FromEmail:  "info@darkolive.co.uk", // TODO: Configure proper from email
-		ToName:     "User",
-		ToEmail:    recipient,
-		Subject:    fmt.Sprintf("Your OTP Code for %s", purpose),
-		TemplateID: "neqvygm91v8l0p7w", // MailerSend template ID
-		Variables: map[string]string{
-			"otp_code": otpCode,
-			"purpose":  purpose,
-			"expires":  "5 minutes",
-		},
-		Tags: []string{"otp", "authentication"},
+	if err != nil {
+		return fmt.Errorf("failed to send OTP email: %w", err)
 	}
 	
-	_, err := mailer.Send(ctx, req)
-	return err
+	if !response.Success {
+		return fmt.Errorf("email service error: %s", response.Error)
+	}
+	
+	return nil
 }
 
 // sendOTPViaOtherChannels sends OTP via SMS, WhatsApp, or Telegram using IrisMessage
@@ -204,7 +199,7 @@ func SendOTP(ctx context.Context, req OTPRequest) (OTPResponse, error) {
 	var sendErr error
 	switch req.Channel {
 	case "email":
-		sendErr = sendOTPViaEmail(ctx, req.Recipient, otpCode, purpose)
+		sendErr = sendOTPViaEmail(req.Recipient, otpCode)
 	case "sms", "whatsapp", "telegram":
 		sendErr = sendOTPViaOtherChannels(ctx, req.Channel, req.Recipient, otpCode, purpose)
 	default:

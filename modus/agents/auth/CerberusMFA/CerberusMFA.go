@@ -240,14 +240,13 @@ func VerifyWebAuthnRegistration(req webauthn.RegistrationRequest) (*webauthn.Reg
 func InitiateWebAuthnAuthentication(userID string) (*webauthn.AssertionChallengeResponse, error) {
 	log.Printf("🔐 CerberusMFA: Initiating WebAuthn authentication for user %s", userID)
 	
-	ctx := context.Background()
 	webauthnService := webauthn.NewWebAuthnService()
 	
 	req := webauthn.AssertionChallengeRequest{
 		UserID: userID,
 	}
 	
-	response, err := webauthnService.CreateAuthenticationChallenge(ctx, req)
+	response, err := webauthnService.CreateAuthenticationChallenge(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create WebAuthn authentication challenge: %v", err)
 	}
@@ -260,10 +259,9 @@ func InitiateWebAuthnAuthentication(userID string) (*webauthn.AssertionChallenge
 func VerifyWebAuthnAuthentication(req webauthn.AuthenticationRequest) (*webauthn.AuthenticationResponse, error) {
 	log.Printf("🔐 CerberusMFA: Verifying WebAuthn authentication for user %s", req.UserID)
 	
-	ctx := context.Background()
 	webauthnService := webauthn.NewWebAuthnService()
 	
-	response, err := webauthnService.VerifyAuthentication(ctx, req)
+	response, err := webauthnService.VerifyAuthentication(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify WebAuthn authentication: %v", err)
 	}
