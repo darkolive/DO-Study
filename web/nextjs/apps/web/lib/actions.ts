@@ -95,57 +95,69 @@ export async function verifyOTP(recipient: string, otpCode: string) {
   return data.verifyOTP
 }
 
-// Session Management Interfaces
-interface SessionRequest {
-  userId: string
-  channelDID: string
-  action: string
+// CerberusMFA Integration - User Routing After OTP Verification
+export async function checkUserAndRoute(channelDID: string, channelType: string) {
+  console.log('🐕 checkUserAndRoute called with:', { channelDID, channelType })
+  
+  const query = `
+    query CheckUserAndRoute($req: CerberusMFARequestInput!) {
+      checkUserAndRoute(req: $req) {
+        userExists
+        action
+        userID
+        availableMethods
+        nextStep
+        message
+      }
+    }
+  `;
+
+  console.log('📡 Calling CerberusMFA endpoint')
+  
+  const { data, error } = await fetchQuery({
+    query,
+    variables: {
+      req: {
+        channelDID,
+        channelType
+      }
+    }
+  })
+
+  if (error) {
+    console.error('❌ Error checking user route:', error)
+    return { userExists: false, action: 'register', message: 'Failed to check user status' }
+  }
+
+  console.log('✅ checkUserAndRoute response:', data.checkUserAndRoute)
+  return data.checkUserAndRoute
 }
 
-interface SessionResponse {
-  success: boolean
-  sessionId: string
-  accessToken: string
-  expiresAt: number
-  message: string
-  userId: string
-}
-
-interface ValidateSessionRequest {
-  sessionId?: string
-  accessToken?: string
-}
-
-interface ValidateSessionResponse {
-  valid: boolean
-  userId?: string
-  message: string
-  expiresAt?: number
-}
+// Session Management Interfaces (will be used when session management is implemented)
 
 // Session Management Functions
 
 export async function createSession(userId: string, channelDID: string, action: string) {
   console.log('🔐 createSession called with:', { userId, channelDID, action })
   
-  const query = `
-    query CreateSession($req: SessionRequestInput!) {
+  const mutation = `
+    mutation CreateSession($req: SessionRequestInput!) {
       createSession(req: $req) {
         success
-        sessionId
+        sessionID
         accessToken
         expiresAt
         message
-        userId
+        userID
       }
     }
   `;
 
   const { data, error } = await fetchQuery({
-    query,
+    query: mutation,
     variables: {
       req: {
-        userId,
+        userID: userId,
         channelDID,
         action
       }
@@ -192,4 +204,170 @@ export async function validateSession(sessionId?: string, accessToken?: string) 
 
   console.log('✅ validateSession response:', data.validateSession)
   return data.validateSession
+}
+
+// WebAuthn Integration
+
+// WebAuthn Types (will be re-added when needed for future WebAuthn UI enhancements)
+
+// WebAuthn GraphQL Functions
+
+export async function createWebAuthnRegistrationChallenge(userID: string, username: string, displayName: string) {
+  console.log('🔐 Creating WebAuthn registration challenge for:', userID)
+  
+  const query = `
+    mutation CreateWebAuthnRegistrationChallenge($req: WebAuthnChallengeRequestInput!) {
+      createWebAuthnRegistrationChallenge(req: $req) {
+        challenge
+        rp {
+          id
+          name
+        }
+        user {
+          id
+          name
+          displayName
+        }
+        pubKeyCredParams {
+          type
+          alg
+        }
+        timeout
+        excludeCredentials {
+          type
+          id
+        }
+        attestation
+        authenticatorSelection {
+          authenticatorAttachment
+          userVerification
+          requireResidentKey
+        }
+      }
+    }
+  `
+
+  const { data, error } = await fetchQuery({
+    query,
+    variables: {
+      req: {
+        userID,
+        username,
+        displayName
+      }
+    }
+  })
+
+  if (error) {
+    console.error('Error creating WebAuthn registration challenge:', error)
+    throw new Error('Failed to create WebAuthn registration challenge')
+  }
+
+  console.log('✅ WebAuthn registration challenge created')
+  return data.createWebAuthnRegistrationChallenge
+}
+
+export async function verifyWebAuthnRegistration(userID: string, challenge: string, clientDataJSON: string, attestationObject: string) {
+  console.log('🔐 Verifying WebAuthn registration for:', userID)
+  
+  const query = `
+    mutation VerifyWebAuthnRegistration($req: WebAuthnRegistrationRequestInput!) {
+      verifyWebAuthnRegistration(req: $req) {
+        success
+        credentialID
+        message
+      }
+    }
+  `
+
+  const { data, error } = await fetchQuery({
+    query,
+    variables: {
+      req: {
+        userID,
+        challenge,
+        clientDataJSON,
+        attestationObject
+      }
+    }
+  })
+
+  if (error) {
+    console.error('Error verifying WebAuthn registration:', error)
+    throw new Error('Failed to verify WebAuthn registration')
+  }
+
+  console.log('✅ WebAuthn registration verified')
+  return data.verifyWebAuthnRegistration
+}
+
+export async function createWebAuthnAuthChallenge(userID: string) {
+  console.log('🔐 Creating WebAuthn auth challenge for:', userID)
+  
+  const query = `
+    mutation CreateWebAuthnAuthenticationChallenge($req: WebAuthnAssertionChallengeRequestInput!) {
+      createWebAuthnAuthenticationChallenge(req: $req) {
+        challenge
+        timeout
+        allowCredentials {
+          type
+        }
+        userVerification
+      }
+    }
+  `
+
+  const { data, error } = await fetchQuery({
+    query,
+    variables: {
+      req: {
+        userID
+      }
+    }
+  })
+
+  if (error) {
+    console.error('Error creating WebAuthn auth challenge:', error)
+    throw new Error('Failed to create WebAuthn auth challenge')
+  }
+
+  console.log('✅ WebAuthn auth challenge created')
+  return data.createWebAuthnAuthenticationChallenge
+}
+
+export async function verifyWebAuthnAuth(userID: string, challenge: string, clientDataJSON: string, authenticatorData: string, signature: string, userHandle?: string) {
+  console.log('🔐 Verifying WebAuthn authentication for:', userID)
+  
+  const query = `
+    query VerifyWebAuthnAuthentication($req: WebAuthnAuthRequestInput!) {
+      verifyWebAuthnAuthentication(req: $req) {
+        success
+        userID
+        sessionID
+        message
+      }
+    }
+  `
+
+  const { data, error } = await fetchQuery({
+    query,
+    variables: {
+      req: {
+        userID,
+        challenge,
+        clientDataJSON,
+        authenticatorData,
+        signature,
+        userHandle: userHandle || userID // Use provided userHandle or fallback to userID
+      }
+    }
+  })
+
+  if (error) {
+    console.error('Error verifying WebAuthn authentication:', error)
+    throw new Error('Failed to verify WebAuthn authentication')
+  }
+
+  console.log('✅ WebAuthn authentication verified')
+  return data.verifyWebAuthnAuthentication
 }
