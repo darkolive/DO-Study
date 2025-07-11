@@ -1,7 +1,7 @@
 "use client"
 
 import { Search, User, Mail, MessageSquare, Phone, Send } from "lucide-react"
-import { useState } from "react"
+import React, { useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@workspace/ui/components/avatar"
@@ -14,259 +14,307 @@ import {
   DialogTrigger,
 } from "@workspace/ui/components/dialog"
 import { Label } from "@workspace/ui/components/label"
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@workspace/ui/components/input-otp"
 import { sendOTP, verifyOTP } from "@/lib/actions"
 
-type AuthStep = 'channel-selection' | 'input' | 'otp' | 'verified'
-type Channel = 'email' | 'sms' | 'whatsapp' | 'telegram'
+type Channel = "email" | "sms" | "whatsapp" | "telegram"
+type AuthStep = "channel-selection" | "input" | "otp" | "verified"
 
-export function Header() {
+export default function Header() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [isSignInOpen, setIsSignInOpen] = useState(false)
-  const [authStep, setAuthStep] = useState<AuthStep>('channel-selection')
+  const [isAuthOpen, setIsAuthOpen] = useState(false)
+  const [authStep, setAuthStep] = useState<AuthStep>("channel-selection")
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null)
   const [channelInput, setChannelInput] = useState("")
   const [otpInput, setOtpInput] = useState("")
-
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState("")
 
+  // Helper functions
+  const getChannelIcon = (channel: Channel) => {
+    switch (channel) {
+      case "email":
+        return <Mail className="h-5 w-5" />
+      case "sms":
+        return <Phone className="h-5 w-5" />
+      case "whatsapp":
+        return <MessageSquare className="h-5 w-5" />
+      case "telegram":
+        return <Send className="h-5 w-5" />
+      default:
+        return <Mail className="h-5 w-5" />
+    }
+  }
+
+  const getChannelLabel = (channel: Channel) => {
+    switch (channel) {
+      case "email":
+        return "Email"
+      case "sms":
+        return "SMS"
+      case "whatsapp":
+        return "WhatsApp"
+      case "telegram":
+        return "Telegram"
+      default:
+        return "Email"
+    }
+  }
+
+  const getInputPlaceholder = (channel: Channel) => {
+    switch (channel) {
+      case "email":
+        return "Enter your email address"
+      case "sms":
+        return "Enter your phone number"
+      case "whatsapp":
+        return "Enter your WhatsApp number"
+      case "telegram":
+        return "Enter your Telegram username"
+      default:
+        return "Enter your email address"
+    }
+  }
+
+  const getInputType = (channel: Channel) => {
+    switch (channel) {
+      case "email":
+        return "email"
+      case "sms":
+      case "whatsapp":
+        return "tel"
+      case "telegram":
+        return "text"
+      default:
+        return "email"
+    }
+  }
+
+  // Event handlers
   const handleChannelSelect = (channel: Channel) => {
     setSelectedChannel(channel)
-    setAuthStep('input')
-    setError(null) // Clear any previous errors
+    setAuthStep("input")
+    setError("")
   }
 
   const handleChannelSubmit = async () => {
-    if (!channelInput.trim()) return
-    
-    console.log('🎯 Frontend: handleChannelSubmit called', { selectedChannel, channelInput })
-    
+    if (!selectedChannel || !channelInput.trim()) {
+      setError("Please enter your contact information")
+      return
+    }
+
     setIsLoading(true)
-    setError(null)
-    
+    setError("")
+    console.log("🔄 Starting OTP send for:", { selectedChannel, channelInput })
+
     try {
-      console.log('📞 Frontend: Calling sendOTP server action...')
-      const result = await sendOTP(selectedChannel!, channelInput)
-      console.log('📥 Frontend: sendOTP result:', result)
-      
+      const result = await sendOTP(selectedChannel, channelInput.trim())
+      console.log("📥 Received result from sendOTP:", result)
+      console.log("🔍 result.sent type:", typeof result.sent, "value:", result.sent)
+
       if (result.sent) {
-        setAuthStep('otp')
+        console.log("✅ OTP sent successfully, advancing to OTP step")
+        setAuthStep("otp")
+        console.log("🎯 Auth step set to: otp")
       } else {
-        setError(result.message || 'Failed to send OTP')
+        console.log("❌ OTP not sent, showing error")
+        setError(result.message || "Failed to send OTP")
       }
     } catch (err) {
-      console.error('💥 Frontend: Error in handleChannelSubmit:', err)
-      setError(err instanceof Error ? err.message : 'Failed to send OTP')
+      console.error("💥 Exception in handleChannelSubmit:", err)
+      setError("Failed to send OTP. Please try again.")
+      console.error("OTP send error:", err)
     } finally {
+      console.log("🏁 Setting loading to false")
       setIsLoading(false)
     }
   }
 
   const handleOtpSubmit = async () => {
-    if (!otpInput.trim() || otpInput.length !== 6) return
-    
+    if (!otpInput || otpInput.length !== 6) {
+      setError("Please enter a valid 6-digit code")
+      return
+    }
+
     setIsLoading(true)
-    setError(null)
-    
+    setError("")
+
     try {
-      const result = await verifyOTP(channelInput, otpInput)
+      const result = await verifyOTP(channelInput.trim(), otpInput)
+
       if (result.verified) {
-        setAuthStep('verified')
+        setAuthStep("verified")
+        setTimeout(() => {
+          setIsAuthOpen(false)
+          resetAuth()
+        }, 2000)
       } else {
-        setError(result.message || 'Invalid OTP code')
+        setError(result.message || "Invalid OTP code")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to verify OTP')
+      setError("Failed to verify OTP. Please try again.")
+      console.error("OTP verify error:", err)
     } finally {
       setIsLoading(false)
     }
   }
 
   const resetAuth = () => {
-    setAuthStep('channel-selection')
+    setAuthStep("channel-selection")
     setSelectedChannel(null)
-    setChannelInput('')
-    setOtpInput('')
+    setChannelInput("")
+    setOtpInput("")
+    setError("")
+    setIsLoading(false)
   }
 
-  const getChannelIcon = (channel: Channel) => {
-    switch (channel) {
-      case 'email': return <Mail className="h-6 w-6" />
-      case 'sms': return <Phone className="h-6 w-6" />
-      case 'whatsapp': return <MessageSquare className="h-6 w-6" />
-      case 'telegram': return <Send className="h-6 w-6" />
+  const handleBackToChannels = () => {
+    setAuthStep("channel-selection")
+    setSelectedChannel(null)
+    setError("")
+  }
+
+  const handleBackToInput = () => {
+    setAuthStep("input")
+    setError("")
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent, action: () => void) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      action()
     }
   }
 
-  const getChannelLabel = (channel: Channel) => {
-    switch (channel) {
-      case 'email': return 'Email'
-      case 'sms': return 'SMS'
-      case 'whatsapp': return 'WhatsApp'
-      case 'telegram': return 'Telegram'
-    }
-  }
-
-  const getInputPlaceholder = () => {
-    switch (selectedChannel) {
-      case 'email': return 'Enter your email address'
-      case 'sms': return 'Enter your phone number'
-      case 'whatsapp': return 'Enter your WhatsApp number'
-      case 'telegram': return 'Enter your Telegram username'
-      default: return ''
-    }
-  }
-
-  const getInputType = () => {
-    return selectedChannel === 'email' ? 'email' : 'text'
-  }
-
-  const renderAuthStep = () => {
+  const renderAuthContent = () => {
     switch (authStep) {
-      case 'channel-selection':
+      case "channel-selection":
         return (
-          <>
-            <DialogHeader>
-              <DialogTitle>Sign In to DO Study</DialogTitle>
-              <DialogDescription>
-                How do you want to verify yourself?
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-6">
-              <div className="grid grid-cols-2 gap-4">
-                {(['email', 'sms', 'whatsapp', 'telegram'] as Channel[]).map((channel) => (
-                  <Button
-                    key={channel}
-                    variant="outline"
-                    className="h-20 flex flex-col gap-2 hover:bg-accent"
-                    onClick={() => handleChannelSelect(channel)}
-                  >
-                    {getChannelIcon(channel)}
-                    <span className="text-sm">{getChannelLabel(channel)}</span>
-                  </Button>
-                ))}
-              </div>
+          <div className="space-y-4">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold">Choose Authentication Method</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Select how you&apos;d like to receive your verification code
+              </p>
             </div>
-          </>
-        )
-
-      case 'input':
-        return (
-          <>
-            <DialogHeader>
-              <DialogTitle>Enter your {getChannelLabel(selectedChannel!)}</DialogTitle>
-              <DialogDescription>
-                We&apos;ll send you a verification code
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="channel-input">{getChannelLabel(selectedChannel!)}</Label>
-                <Input
-                  id="channel-input"
-                  type={getInputType()}
-                  placeholder={getInputPlaceholder()}
-                  value={channelInput}
-                  onChange={(e) => setChannelInput(e.target.value)}
-                  className="w-full"
-                  onKeyDown={(e) => e.key === 'Enter' && handleChannelSubmit()}
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={resetAuth} className="flex-1">
-                  Back
-                </Button>
-                <Button onClick={handleChannelSubmit} disabled={isLoading} className="flex-1">
-                  {isLoading ? 'Sending...' : 'Send Code'}
-                </Button>
-              </div>
-            </div>
-          </>
-        )
-
-      case 'otp':
-        return (
-          <>
-            <DialogHeader>
-              <DialogTitle>Enter Verification Code</DialogTitle>
-              <DialogDescription>
-                Enter the 6-digit code sent to your {getChannelLabel(selectedChannel!)}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="otp-input">Verification Code</Label>
-                <div className="flex justify-center">
-                  <InputOTP
-                    maxLength={6}
-                    value={otpInput}
-                    onChange={(value) => setOtpInput(value)}
-                    onComplete={handleOtpSubmit}
-                  >
-                    <InputOTPGroup>
-                      <InputOTPSlot index={0} />
-                      <InputOTPSlot index={1} />
-                      <InputOTPSlot index={2} />
-                      <InputOTPSlot index={3} />
-                      <InputOTPSlot index={4} />
-                      <InputOTPSlot index={5} />
-                    </InputOTPGroup>
-                  </InputOTP>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setAuthStep('input')} className="flex-1">
-                  Back
-                </Button>
-                <Button onClick={handleOtpSubmit} disabled={isLoading} className="flex-1">
-                  {isLoading ? 'Verifying...' : 'Verify'}
-                </Button>
-              </div>
-              <div className="text-center">
-                <Button 
-                  variant="link" 
-                  className="text-sm text-muted-foreground"
-                  onClick={async () => {
-                    setIsLoading(true)
-                    setError(null)
-                    try {
-                      await sendOTP(selectedChannel!, channelInput)
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : 'Failed to resend OTP')
-                    } finally {
-                      setIsLoading(false)
-                    }
-                  }}
-                  disabled={isLoading}
+            <div className="grid grid-cols-2 gap-3">
+              {(["email", "sms", "whatsapp", "telegram"] as const).map((channel) => (
+                <Button
+                  key={channel}
+                  variant="outline"
+                  className="h-20 flex flex-col gap-2 hover:bg-muted"
+                  onClick={() => handleChannelSelect(channel)}
                 >
-                  {isLoading ? 'Resending...' : "Didn't receive code? Resend"}
+                  {getChannelIcon(channel)}
+                  <span className="text-sm">{getChannelLabel(channel)}</span>
                 </Button>
-              </div>
+              ))}
             </div>
-          </>
+          </div>
         )
 
-      case 'verified':
+      case "input":
         return (
-          <>
-            <DialogHeader>
-              <DialogTitle>✅ Verification Successful</DialogTitle>
-              <DialogDescription>
-                You are now verified and signed in!
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="text-center py-4">
-                <div className="text-6xl mb-4">🎉</div>
-                <p className="text-lg font-medium mb-2">Welcome to DO Study!</p>
-                <p className="text-muted-foreground">You can now access your learning dashboard.</p>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={handleBackToChannels}>
+                ← Back
+              </Button>
+              <div className="flex items-center gap-2">
+                {selectedChannel && getChannelIcon(selectedChannel)}
+                <span className="font-medium">
+                  {selectedChannel && getChannelLabel(selectedChannel)}
+                </span>
               </div>
-              <Button onClick={() => setIsSignInOpen(false)} className="w-full">
-                Continue to Dashboard
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="channel-input">
+                {selectedChannel && getChannelLabel(selectedChannel)} Address
+              </Label>
+              <Input
+                id="channel-input"
+                type={selectedChannel ? getInputType(selectedChannel) : "email"}
+                placeholder={selectedChannel ? getInputPlaceholder(selectedChannel) : ""}
+                value={channelInput}
+                onChange={(e) => setChannelInput(e.target.value)}
+                onKeyPress={(e) => handleKeyPress(e, handleChannelSubmit)}
+                disabled={isLoading}
+              />
+            </div>
+            {error && (
+              <div className="text-sm text-red-600">{error}</div>
+            )}
+            <Button
+              onClick={handleChannelSubmit}
+              disabled={isLoading || !channelInput.trim()}
+              className="w-full"
+            >
+              {isLoading ? "Sending..." : "Send Verification Code"}
+            </Button>
+          </div>
+        )
+
+      case "otp":
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={handleBackToInput}>
+                ← Back
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Code sent to {selectedChannel && getChannelLabel(selectedChannel).toLowerCase()}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="otp-input">Verification Code</Label>
+              <Input
+                id="otp-input"
+                type="text"
+                placeholder="Enter 6-digit code"
+                value={otpInput}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, "").slice(0, 6)
+                  setOtpInput(value)
+                }}
+                onKeyPress={(e) => handleKeyPress(e, handleOtpSubmit)}
+                disabled={isLoading}
+                maxLength={6}
+                className="text-center text-lg tracking-widest"
+              />
+            </div>
+            {error && (
+              <div className="text-sm text-red-600">{error}</div>
+            )}
+            <Button
+              onClick={handleOtpSubmit}
+              disabled={isLoading || otpInput.length !== 6}
+              className="w-full"
+            >
+              {isLoading ? "Verifying..." : "Verify Code"}
+            </Button>
+            <div className="text-center">
+              <Button variant="link" size="sm" onClick={handleChannelSubmit}>
+                Didn&apos;t receive code? Resend
               </Button>
             </div>
-          </>
+          </div>
+        )
+
+      case "verified":
+        return (
+          <div className="space-y-4 text-center">
+            <div className="text-6xl">🎉</div>
+            <div>
+              <h3 className="text-lg font-semibold text-green-600">
+                Successfully Verified!
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Welcome to DO Study
+              </p>
+            </div>
+            <Button onClick={() => setIsAuthOpen(false)} className="w-full">
+              Continue to Dashboard
+            </Button>
+          </div>
         )
 
       default:
@@ -276,55 +324,55 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between px-4">
-        {/* Logo Section */}
-        <div className="flex items-center space-x-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-            DO
-          </div>
-          <span className="font-semibold text-lg">Study</span>
-        </div>
-
-        {/* Search Bar Section */}
-        <div className="flex-1 max-w-md mx-8">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search courses, topics, or resources..."
-              className="pl-10 pr-4"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+      <div className="container flex h-14 items-center">
+        <div className="mr-4 hidden md:flex">
+          <div className="mr-6 flex items-center space-x-2">
+            <div className="h-6 w-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded" />
+            <span className="hidden font-bold sm:inline-block">
+              DO Study
+            </span>
           </div>
         </div>
-
-        {/* Sign In Section */}
-        <div className="flex items-center space-x-2">
-          <Dialog open={isSignInOpen} onOpenChange={setIsSignInOpen}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="relative">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src="" alt="User" />
-                  <AvatarFallback>
-                    <User className="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-                <span className="ml-2 hidden sm:inline-block">Sign In</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Sign In</DialogTitle>
-              </DialogHeader>
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-                  {error}
+        <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
+          <div className="w-full flex-1 md:w-auto md:flex-none">
+            <form>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search courses..."
+                  className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </form>
+          </div>
+          <nav className="flex items-center">
+            <Dialog open={isAuthOpen} onOpenChange={setIsAuthOpen}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src="" alt="User" />
+                    <AvatarFallback>
+                      <User className="h-4 w-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]" onOpenAutoFocus={() => resetAuth()}>
+                <DialogHeader>
+                  <DialogTitle>Authentication</DialogTitle>
+                  <DialogDescription>
+                    Secure multi-step verification
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  {renderAuthContent()}
                 </div>
-              )}
-              {renderAuthStep()}
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          </nav>
         </div>
       </div>
     </header>
