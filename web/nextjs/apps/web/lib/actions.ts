@@ -32,21 +32,22 @@ const fetchQuery = async ({ query, variables }: FetchQueryProps) => {
 export async function sendOTP(channel: string, recipient: string) {
   console.log('🚀 sendOTP called with:', { channel, recipient })
   
-  const graphqlQuery = `
-    mutation SendOTP($req: OTPRequest!) {
+  const query = `
+    query SendOTP($req: OTPRequest!) {
       sendOTP(req: $req) {
-        otpId
+        oTPID
         sent
         channel
+        expiresAt
         message
       }
     }
-  `
+  `;
 
   console.log('📡 Calling GraphQL endpoint:', process.env.HYPERMODE_API_ENDPOINT)
   
   const { data, error } = await fetchQuery({
-    query: graphqlQuery,
+    query,
     variables: {
       req: {
         channel,
@@ -65,23 +66,24 @@ export async function sendOTP(channel: string, recipient: string) {
 }
 
 export async function verifyOTP(recipient: string, otpCode: string) {
-  const graphqlQuery = `
-    mutation VerifyOTP($req: VerifyOTPRequest!) {
+  const query = `
+    query VerifyOTP($req: VerifyOTPRequest!) {
       verifyOTP(req: $req) {
         verified
         channelDID
         message
-        userId
+        userID
+        action
       }
     }
-  `
+  `;
 
   const { data, error } = await fetchQuery({
-    query: graphqlQuery,
+    query,
     variables: {
       req: {
         recipient,
-        otpCode
+        oTPCode: otpCode
       }
     }
   })
