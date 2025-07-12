@@ -323,6 +323,22 @@ export default function Header() {
 
       if (verificationResponse?.success) {
         console.log('✅ WebAuthn verification successful, setting verified state')
+        
+        // Store session credentials in localStorage for session validation
+        // Both sessionID and accessToken contain the JWT token from ChronosSession
+        if (verificationResponse.sessionID) {
+          localStorage.setItem('sessionId', verificationResponse.sessionID)
+          console.log('💾 Stored sessionId (JWT token) in localStorage')
+        }
+        if (verificationResponse.accessToken) {
+          localStorage.setItem('accessToken', verificationResponse.accessToken)
+          console.log('💾 Stored accessToken (JWT token) in localStorage')
+        }
+        if (verificationResponse.userID) {
+          localStorage.setItem('userID', verificationResponse.userID)
+          console.log('💾 Stored userID in localStorage')
+        }
+        
         setAuthStep("verified")
       } else {
         console.log('❌ WebAuthn verification failed:', verificationResponse)

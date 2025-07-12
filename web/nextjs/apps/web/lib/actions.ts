@@ -174,27 +174,37 @@ export async function createSession(userId: string, channelDID: string, action: 
 }
 
 export async function validateSession(sessionId?: string, accessToken?: string) {
-  console.log('🔍 validateSession called with:', { sessionId: sessionId ? '***' : undefined, accessToken: accessToken ? '***' : undefined })
+  console.log('🔍 validateSession called with:', { sessionId: sessionId ? '***' : 'undefined', accessToken: accessToken ? '***' : 'undefined' })
+  
+  // Use the JWT token (both sessionId and accessToken contain the same JWT token)
+  const jwtToken = accessToken || sessionId
+  if (!jwtToken) {
+    console.log('❌ No JWT token provided for validation')
+    return { valid: false, message: 'No token provided' }
+  }
   
   const query = `
-    query ValidateSession($req: ValidateSessionRequestInput!) {
+    query ValidateSession($req: ValidationRequestInput!) {
       validateSession(req: $req) {
         valid
-        userId
+        userID
         message
         expiresAt
       }
     }
-  `;
+  `
+  
+  const variables = {
+    req: {
+      token: jwtToken
+    }
+  }
+
+  console.log('🔍 Sending validation request with token:', jwtToken.substring(0, 20) + '...')
 
   const { data, error } = await fetchQuery({
     query,
-    variables: {
-      req: {
-        sessionId,
-        accessToken
-      }
-    }
+    variables
   })
 
   if (error) {
@@ -204,6 +214,19 @@ export async function validateSession(sessionId?: string, accessToken?: string) 
 
   console.log('✅ validateSession response:', data.validateSession)
   return data.validateSession
+}
+
+// Server-side session validation (called with credentials from client)
+export async function validateSessionWithCredentials(sessionId?: string, accessToken?: string) {
+  console.log('🔍 validateSessionWithCredentials called')
+  
+  if (!sessionId && !accessToken) {
+    console.log('❌ No session credentials provided')
+    return { valid: false, message: 'No session credentials provided' }
+  }
+  
+  // Validate the session with the backend
+  return await validateSession(sessionId || undefined, accessToken || undefined)
 }
 
 // WebAuthn Integration
