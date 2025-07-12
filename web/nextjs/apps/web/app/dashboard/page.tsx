@@ -1,89 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { validateSession } from '@/lib/actions'
+import { useAuth } from '@/components/auth-provider'
 
 export default function DashboardPage() {
+  const { user, sessionValid, showSuccessMessage, setShowSuccessMessage, signOut } = useAuth()
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<{
-    userId: string
-    username?: string
-    displayName?: string
-  } | null>(null)
-  const [sessionValid, setSessionValid] = useState(false)
 
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        // Get session information from localStorage
-        const sessionId = localStorage.getItem('sessionId')
-        const accessToken = localStorage.getItem('accessToken')
-        const userId = localStorage.getItem('userId')
-        const username = localStorage.getItem('username')
-        const displayName = localStorage.getItem('displayName')
-
-        if (!sessionId && !accessToken) {
-          router.push('/')
-          return
-        }
-
-        // Validate session with backend
-        const validation = await validateSession(sessionId || undefined, accessToken || undefined)
-        
-        if (validation.valid) {
-          setSessionValid(true)
-          setUser({
-            userId: validation.userId || userId || 'unknown',
-            username: username || undefined,
-            displayName: displayName || undefined
-          })
-        } else {
-          // Session invalid, clear storage and redirect
-          localStorage.removeItem('sessionId')
-          localStorage.removeItem('accessToken')
-          localStorage.removeItem('userId')
-          localStorage.removeItem('username')
-          localStorage.removeItem('displayName')
-          router.push('/')
-        }
-      } catch (error) {
-        console.error('Session validation error:', error)
+    // Redirect to home if no valid session
+    if (!sessionValid && !user) {
+      const sessionId = localStorage.getItem('sessionId')
+      const accessToken = localStorage.getItem('accessToken')
+      
+      if (!sessionId || !accessToken) {
         router.push('/')
-      } finally {
-        setLoading(false)
       }
     }
+  }, [sessionValid, user, router])
 
-    checkSession()
-  }, [router])
-
-  const handleSignOut = () => {
-    // Clear all session data
-    localStorage.removeItem('sessionId')
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('userId')
-    localStorage.removeItem('username')
-    localStorage.removeItem('displayName')
-    
-    // Redirect to home
-    router.push('/')
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <svg className="animate-spin -ml-1 mr-3 h-8 w-8 text-indigo-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <p className="mt-2 text-gray-600">Validating session...</p>
-        </div>
-      </div>
-    )
-  }
+  // Use the global signOut function instead of local implementation
 
   if (!sessionValid || !user) {
     return (
@@ -110,7 +47,7 @@ export default function DashboardPage() {
                 Welcome, <span className="font-medium">{user.displayName || user.username || user.userId}</span>
               </div>
               <button
-                onClick={handleSignOut}
+                onClick={signOut}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
               >
                 Sign Out
@@ -119,6 +56,39 @@ export default function DashboardPage() {
           </div>
         </div>
       </header>
+
+      {/* Success Message Banner */}
+      {showSuccessMessage && (
+        <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-green-700">
+                <span className="font-medium">✅ Hi you are now logged in!</span>
+                {' '}Your authentication was successful and your secure session is active.
+              </p>
+            </div>
+            <div className="ml-auto pl-3">
+              <div className="-mx-1.5 -my-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowSuccessMessage(false)}
+                  className="inline-flex bg-green-50 rounded-md p-1.5 text-green-500 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-green-50 focus:ring-green-600"
+                >
+                  <span className="sr-only">Dismiss</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">

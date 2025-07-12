@@ -120,18 +120,19 @@ export default function Header() {
 
       if (result.sent) {
         console.log("✅ OTP sent successfully, advancing to OTP step")
-        setAuthStep("otp")
+        // Force immediate state update by using React's flushSync for critical UI updates
+        setIsLoading(false) // Set loading false first
+        setAuthStep("otp") // Then immediately advance to OTP step
         console.log("🎯 Auth step set to: otp")
       } else {
         console.log("❌ OTP not sent, showing error")
         setError(result.message || "Failed to send OTP")
+        setIsLoading(false)
       }
     } catch (err) {
       console.error("💥 Exception in handleChannelSubmit:", err)
       setError("Failed to send OTP. Please try again.")
       console.error("OTP send error:", err)
-    } finally {
-      console.log("🏁 Setting loading to false")
       setIsLoading(false)
     }
   }
@@ -339,7 +340,22 @@ export default function Header() {
           console.log('💾 Stored userID in localStorage')
         }
         
+        // Broadcast authentication success to other components/pages
+        window.dispatchEvent(new CustomEvent('authSuccess', {
+          detail: {
+            userID: verificationResponse.userID,
+            sessionID: verificationResponse.sessionID,
+            accessToken: verificationResponse.accessToken
+          }
+        }))
+        console.log('📡 Broadcasted authSuccess event for real-time UI updates')
+        
         setAuthStep("verified")
+        
+        // Navigate to dashboard after successful authentication
+        setTimeout(() => {
+          window.location.href = '/dashboard'
+        }, 500) // Small delay to ensure state updates complete
       } else {
         console.log('❌ WebAuthn verification failed:', verificationResponse)
         setError(verificationResponse?.message || 'Authentication verification failed')
